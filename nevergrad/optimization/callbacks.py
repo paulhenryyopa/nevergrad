@@ -347,6 +347,11 @@ class EarlyStopping:
         """Early stop when max_duration seconds has been reached (from the first ask)"""
         return cls(_DurationCriterion(max_duration))
 
+    @classmethod
+    def improvement(cls, min_improvement: float, n_best: int) -> "EarlyStopping":
+        """Early stop when the relative improvement is too small at each iteration"""
+        return cls(_ImprovementCriterion(min_improvement = min_improvement, n_best = n_best))
+
 
 class _DurationCriterion:
     def __init__(self, max_duration: float) -> None:
@@ -357,3 +362,29 @@ class _DurationCriterion:
         if np.isinf(self._start):
             self._start = time.time()
         return time.time() > self._start + self._max_duration
+
+class _ImprovementCriterion:
+    def __init__(self, min_improvement: float, n_best: int) -> None:
+        self._min_improvement = min_improvement
+        self._n_best = n_best
+        self._best_points =np.array([])
+
+    def __call__(self, optimizer: base.Optimizer) -> bool:
+        # Get the last best points that has been visited by the optimizer
+        current_best = optimizer.current_bests["minimum"].mean
+        if current_best != float('inf'):
+            self._best_points = np.append(self._best_points, np.array([current_best]))
+
+        # Keep the n_best points only
+        sliced = self._best_points[-(self._n_best+1):-1]
+        sliced= np.sort(sliced)
+
+        if self._best_points.size > self._n_best:
+            best= sliced[-1]
+            worst = sliced[0]
+            if best - worst < self._min_improvement:
+                print("\n !!! Optimization stopped because it reached the improvement threshold !!! \n")
+                print("\n Relative improvement of: ", best - worst, " over the last ", self._n_best, "iterations.")
+                return True
+
+        return False
